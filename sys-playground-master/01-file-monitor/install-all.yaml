@@ -1,0 +1,41 @@
+- hosts: localhost
+  gather_facts: true
+  vars:
+    target_dir: /home/user/
+  tasks:
+  - name: Add grafana repo
+    yum_repository:
+      name: grafana
+      description: Grafana enterprise repo
+      file: grafana.repo
+      baseurl: https://packages.grafana.com/enterprise/rpm
+      gpgcheck: no
+  - name: Install grafana
+    yum:
+      name: grafana
+      state: present
+  - name: Enable and start grafana
+    ansible.builtin.systemd:
+      daemon_reload: yes
+      state: started
+      name: grafana-server
+      enabled: yes
+  - name: install packages
+    include_tasks: tasks/install-from-github-v1.yaml
+    loop:
+      - { package: 'prometheus', repo: 'prometheus', base_url: 'https://github.com/prometheus/prometheus', hostname: "{{ inventory_hostname }}" }
+      - { package: 'node_exporter', repo: 'prometheus', base_url: 'https://github.com/prometheus/node_exporter' }
+  - name: install packages
+    include_tasks: tasks/install-from-github-v2.yaml
+    loop:
+      - { package: 'filestat_exporter', repo: 'michael-doubez', base_url: 'https://github.com/michael-doubez/filestat_exporter', directory: "{{target_dir}}", patterns: "\"**\"" }
+  - name: add cron job for directory scan
+    cron:
+      name: Sets cron job to run script per minute
+      minute: "*"
+      hour: "*"
+      day: "*"
+      month: "*"
+      weekday: "*"
+      user: "root"
+      job: du -sb {{ target_dir }} | sed -ne 's/^\([0-9]\+\)\t\(.*\)$/node_directory_size_bytes{directory="\2"} \1/p' > /etc/node_exporter/directory_size.prom
